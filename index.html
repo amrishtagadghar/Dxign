@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dxign | Color Principle</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="top-bar">
+      <div class="top-bar__group">
+        <span class="eyebrow">Principle</span>
+        <strong id="principle-name">Color</strong>
+      </div>
+
+      <div class="top-bar__group top-bar__group--center">
+        <span class="eyebrow">Timer</span>
+        <strong id="timer" aria-live="polite">01:00</strong>
+      </div>
+
+      <button id="skip-round" class="text-button" type="button">Next random principle</button>
+    </header>
+
+    <main class="game-layout">
+      <section class="hero-panel">
+        <div class="hero-panel__copy">
+          <p class="section-kicker">Design Drill</p>
+          <h1>Build a stronger palette under pressure.</h1>
+          <p id="round-status" class="hero-panel__status">
+            Match the primary color with two supporting choices before the timer runs out.
+          </p>
+        </div>
+
+        <div class="score-card" aria-live="polite">
+          <span class="eyebrow">Round Score</span>
+          <strong id="round-score">--</strong>
+          <p id="round-score-caption">Submit your colors to reveal the result.</p>
+        </div>
+      </section>
+
+      <section class="play-area" aria-label="Color challenge">
+        <article class="shape-card">
+          <span class="shape-card__label">Primary</span>
+          <div id="primary-shape" class="shape shape--circle" aria-label="Primary color"></div>
+          <p id="primary-hex" class="shape-card__value">#000000</p>
+        </article>
+
+        <article class="shape-card">
+          <span class="shape-card__label">Secondary</span>
+          <button id="secondary-trigger" class="shape-button" type="button" aria-label="Choose secondary color">
+            <span id="secondary-shape" class="shape shape--square shape--placeholder"></span>
+          </button>
+          <p id="secondary-hex" class="shape-card__value">Pick a color</p>
+          <input id="secondary-input" class="color-input" type="color" value="#7a8cff" aria-label="Secondary color picker">
+        </article>
+
+        <article class="shape-card">
+          <span class="shape-card__label">Tertiary</span>
+          <button id="tertiary-trigger" class="shape-button" type="button" aria-label="Choose tertiary color">
+            <span id="tertiary-shape" class="shape shape--triangle shape--placeholder"></span>
+          </button>
+          <p id="tertiary-hex" class="shape-card__value">Pick a color</p>
+          <input id="tertiary-input" class="color-input" type="color" value="#ff8f7a" aria-label="Tertiary color picker">
+        </article>
+      </section>
+
+      <section class="action-row">
+        <button id="submit-round" class="action-button" type="button">Submit</button>
+        <button id="toggle-feedback" class="action-button action-button--ghost" type="button" disabled>View Feedback</button>
+        <button id="next-round" class="action-button action-button--ghost" type="button" disabled>Next Principle</button>
+      </section>
+
+      <section id="feedback-panel" class="feedback-panel" hidden>
+        <span class="eyebrow">Feedback</span>
+        <p id="feedback-text"></p>
+      </section>
+    </main>
+
+    <footer class="bottom-bar">
+      <button id="about-button" class="text-button" type="button">About</button>
+
+      <div class="bottom-bar__score">
+        <span class="eyebrow">Your Score</span>
+        <strong id="cumulative-score">0</strong>
+      </div>
+
+      <button id="reset-game" class="text-button" type="button">Reset</button>
+    </footer>
+  </div>
+
+  <dialog id="about-dialog" class="about-dialog">
+    <form method="dialog" class="about-dialog__content">
+      <p class="section-kicker">About Dxign</p>
+      <h2>Learn color relationships by playing fast, focused rounds.</h2>
+      <p>
+        In this Phase 1 prototype, Dxign gives you a random primary color and scores your supporting picks
+        using hue distance in HSL space. Try aiming for complementary, triadic, or analogous relationships.
+      </p>
+      <button class="action-button" type="submit">Close</button>
+    </form>
+  </dialog>
+
+  <script src="game.js"></script>
+</body>
+</html>
