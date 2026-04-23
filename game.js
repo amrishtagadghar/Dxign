@@ -1,406 +1,455 @@
-const ROUND_DURATION = 60;
-const MIN_FILLED_SCORE = 5;
+// ── Color Engine ──────────────────────────────────────────
 
-const RELATIONSHIPS = [
-  { name: "complementary", targets: [180], maxPoints: 50 },
-  { name: "triadic", targets: [120, 240], maxPoints: 35 },
-  { name: "analogous", targets: [30, 330], maxPoints: 20 },
-];
+function hslToHex(h, s, l) {
+  const sat = s / 100;
+  const light = l / 100;
+  const chroma = (1 - Math.abs(2 * light - 1)) * sat;
+  const hPrime = h / 60;
+  const x = chroma * (1 - Math.abs((hPrime % 2) - 1));
+  let r = 0, g = 0, b = 0;
+
+  if (hPrime < 1)      { r = chroma; g = x; }
+  else if (hPrime < 2) { r = x; g = chroma; }
+  else if (hPrime < 3) { g = chroma; b = x; }
+  else if (hPrime < 4) { g = x; b = chroma; }
+  else if (hPrime < 5) { r = x; b = chroma; }
+  else                 { r = chroma; b = x; }
+
+  const m = light - chroma / 2;
+  const toHex = v => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+}
+
+function hexToHsl(hex) {
+  const n = hex.replace('#', '');
+  const r = parseInt(n.slice(0, 2), 16) / 255;
+  const g = parseInt(n.slice(2, 4), 16) / 255;
+  const b = parseInt(n.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  let h = 0, s = 0;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) * 60; break;
+      case g: h = ((b - r) / d + 2) * 60; break;
+      default: h = ((r - g) / d + 4) * 60; break;
+    }
+  }
+  return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+function complementHsl(h, s, l) {
+  return { h: (h + 180) % 360, s, l };
+}
+
+function hueDiff(a, b) {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+function randomVividColor() {
+  const h = Math.floor(Math.random() * 360);
+  const s = 60 + Math.floor(Math.random() * 26);  // 60–85%
+  const l = 45 + Math.floor(Math.random() * 16);  // 45–60%
+  return hslToHex(h, s, l);
+}
+
+// ── Constants ─────────────────────────────────────────────
+
+const TOTAL_ROUNDS    = 5;
+const ROUND_DURATION  = 60;
+const MAX_POSSIBLE    = 570; // 5 rounds all-Excellent with full streak progression
+
+// ── State ─────────────────────────────────────────────────
 
 const state = {
-  principle: "Color",
-  cumulativeScore: 0,
+  round:         1,
+  givenHex:      null,
+  correctHex:    null,
+  playerHex:     null,
   timeRemaining: ROUND_DURATION,
-  timerId: null,
-  roundSubmitted: false,
-  feedbackVisible: false,
-  primaryHex: "#000000",
-  secondaryHex: null,
-  tertiaryHex: null,
-  latestResult: null,
+  timerId:       null,
+  hintUsed:      false,
+  submitted:     false,
+  pickerTempHex: null,
+  score:         0,
+  streak:        0,
+  maxStreak:     0,
+  bestRound:     0,
+  roundScores:   [],
 };
 
-const elements = {
-  principleName: document.querySelector("#principle-name"),
-  timer: document.querySelector("#timer"),
-  roundStatus: document.querySelector("#round-status"),
-  roundScore: document.querySelector("#round-score"),
-  roundScoreCaption: document.querySelector("#round-score-caption"),
-  primaryShape: document.querySelector("#primary-shape"),
-  primaryHex: document.querySelector("#primary-hex"),
-  secondaryShape: document.querySelector("#secondary-shape"),
-  secondaryHex: document.querySelector("#secondary-hex"),
-  tertiaryShape: document.querySelector("#tertiary-shape"),
-  tertiaryHex: document.querySelector("#tertiary-hex"),
-  secondaryInput: document.querySelector("#secondary-input"),
-  tertiaryInput: document.querySelector("#tertiary-input"),
-  secondaryTrigger: document.querySelector("#secondary-trigger"),
-  tertiaryTrigger: document.querySelector("#tertiary-trigger"),
-  submitRound: document.querySelector("#submit-round"),
-  toggleFeedback: document.querySelector("#toggle-feedback"),
-  nextRound: document.querySelector("#next-round"),
-  feedbackPanel: document.querySelector("#feedback-panel"),
-  feedbackText: document.querySelector("#feedback-text"),
-  cumulativeScore: document.querySelector("#cumulative-score"),
-  skipRound: document.querySelector("#skip-round"),
-  resetGame: document.querySelector("#reset-game"),
-  aboutButton: document.querySelector("#about-button"),
-  aboutDialog: document.querySelector("#about-dialog"),
+// ── DOM refs ──────────────────────────────────────────────
+
+const el = {
+  timer:           document.getElementById('timer'),
+  leftHex:         document.getElementById('left-hex'),
+  rightHex:        document.getElementById('right-hex'),
+  canvas:          document.getElementById('split-circle'),
+  pickTrigger:     document.getElementById('pick-trigger'),
+  accuracyWrap:    document.getElementById('accuracy-wrap'),
+  accuracyFill:    document.getElementById('accuracy-fill'),
+  accuracyLabel:   document.getElementById('accuracy-label'),
+  feedbackSection: document.getElementById('feedback-section'),
+  hintInfo:        document.getElementById('hint-info'),
+  hintText:        document.getElementById('hint-text'),
+  submitInfo:      document.getElementById('submit-info'),
+  tierLabel:       document.getElementById('tier-label'),
+  pointsEarned:    document.getElementById('points-earned'),
+  correctReveal:   document.getElementById('correct-reveal'),
+  streakBadge:     document.getElementById('streak-badge'),
+  hintBtn:         document.getElementById('hint-btn'),
+  submitBtn:       document.getElementById('submit-btn'),
+  nextBtn:         document.getElementById('next-btn'),
+  scoreDisplay:    document.getElementById('score-display'),
+  roundDisplay:    document.getElementById('round-display'),
+  streakDisplay:   document.getElementById('streak-display'),
+  bestDisplay:     document.getElementById('best-display'),
+  pickerOverlay:   document.getElementById('picker-popup'),
+  colorPicker:     document.getElementById('color-picker'),
+  hexInput:        document.getElementById('hex-input'),
+  pickerPreview:   document.getElementById('picker-preview'),
+  pickerCancel:    document.getElementById('picker-cancel'),
+  pickerUse:       document.getElementById('picker-use'),
+  resultsOverlay:  document.getElementById('results-overlay'),
+  resultsGrade:    document.getElementById('results-grade'),
+  resultsScore:    document.getElementById('results-score'),
+  resultsAccuracy: document.getElementById('results-accuracy'),
+  resultsBest:     document.getElementById('results-best'),
+  resultsStreak:   document.getElementById('results-streak'),
+  playAgain:       document.getElementById('play-again'),
 };
 
-function init() {
-  wireEvents();
-  startRound();
+// ── Canvas drawing ────────────────────────────────────────
+
+function drawCircle(leftHex, rightHex) {
+  const ctx  = el.canvas.getContext('2d');
+  const w    = el.canvas.width;
+  const h    = el.canvas.height;
+  const cx   = w / 2;
+  const r    = cx - 1;
+
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cx, r, 0, Math.PI * 2);
+  ctx.clip();
+
+  // Left half — target color
+  ctx.fillStyle = leftHex;
+  ctx.fillRect(0, 0, cx, h);
+
+  // Right half — player pick or placeholder
+  ctx.fillStyle = rightHex || '#2E2E2E';
+  ctx.fillRect(cx, 0, cx, h);
+
+  // Divider
+  ctx.strokeStyle = '#1A1A1A';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, 0);
+  ctx.lineTo(cx, h);
+  ctx.stroke();
+
+  ctx.restore();
+
+  // "?" placeholder on right half when no pick
+  if (!rightHex) {
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = 'bold 52px DM Sans, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('?', cx + cx / 2, cx);
+  }
 }
 
-function wireEvents() {
-  elements.secondaryTrigger.addEventListener("click", () => {
-    if (!state.roundSubmitted) {
-      elements.secondaryInput.click();
-    }
-  });
-
-  elements.tertiaryTrigger.addEventListener("click", () => {
-    if (!state.roundSubmitted) {
-      elements.tertiaryInput.click();
-    }
-  });
-
-  elements.secondaryInput.addEventListener("input", (event) => {
-    applyPlayerColor("secondary", event.target.value);
-  });
-
-  elements.tertiaryInput.addEventListener("input", (event) => {
-    applyPlayerColor("tertiary", event.target.value);
-  });
-
-  elements.submitRound.addEventListener("click", () => submitRound("manual"));
-  elements.nextRound.addEventListener("click", () => startRound());
-  elements.skipRound.addEventListener("click", () => skipRound());
-  elements.resetGame.addEventListener("click", resetGame);
-
-  elements.toggleFeedback.addEventListener("click", () => {
-    state.feedbackVisible = !state.feedbackVisible;
-    elements.feedbackPanel.hidden = !state.feedbackVisible;
-    elements.toggleFeedback.textContent = state.feedbackVisible ? "Hide Feedback" : "View Feedback";
-  });
-
-  elements.aboutButton.addEventListener("click", () => {
-    if (typeof elements.aboutDialog.showModal === "function") {
-      elements.aboutDialog.showModal();
-    }
-  });
-}
+// ── Round lifecycle ───────────────────────────────────────
 
 function startRound() {
   stopTimer();
 
+  const gsl  = hexToHsl(randomVividColor());
+  const comp = complementHsl(gsl.h, gsl.s, gsl.l);
+
+  state.givenHex      = hslToHex(gsl.h, gsl.s, gsl.l);
+  state.correctHex    = hslToHex(comp.h, comp.s, comp.l);
+  state.playerHex     = null;
   state.timeRemaining = ROUND_DURATION;
-  state.roundSubmitted = false;
-  state.feedbackVisible = false;
-  state.primaryHex = randomHexColor();
-  state.secondaryHex = null;
-  state.tertiaryHex = null;
-  state.latestResult = null;
+  state.hintUsed      = false;
+  state.submitted     = false;
 
-  elements.principleName.textContent = state.principle;
-  elements.roundStatus.textContent = "Match the primary color with two supporting choices before the timer runs out.";
-  elements.roundScore.textContent = "--";
-  elements.roundScore.className = "";
-  elements.roundScoreCaption.textContent = "Submit your colors to reveal the result.";
-  elements.feedbackText.textContent = "";
-  elements.feedbackPanel.hidden = true;
-  elements.toggleFeedback.disabled = true;
-  elements.toggleFeedback.textContent = "View Feedback";
-  elements.nextRound.disabled = true;
-  elements.submitRound.disabled = false;
-  elements.skipRound.disabled = false;
-  elements.secondaryTrigger.disabled = false;
-  elements.tertiaryTrigger.disabled = false;
-  elements.secondaryInput.value = "#7a8cff";
-  elements.tertiaryInput.value = "#ff8f7a";
+  el.leftHex.textContent  = state.givenHex;
+  el.rightHex.textContent = '?';
+  el.roundDisplay.textContent = `${state.round} / ${TOTAL_ROUNDS}`;
 
+  el.accuracyWrap.hidden    = true;
+  el.feedbackSection.hidden = true;
+  el.hintInfo.hidden        = true;
+  el.submitInfo.hidden      = true;
+  el.streakBadge.hidden     = true;
+
+  el.hintBtn.disabled   = false;
+  el.submitBtn.disabled = false;
+  el.nextBtn.disabled   = true;
+  el.nextBtn.textContent = 'Next Round';
+  el.pickTrigger.disabled = false;
+
+  drawCircle(state.givenHex, null);
   updateTimerDisplay();
-  renderPrimary();
-  renderPlayerShape("secondary", null);
-  renderPlayerShape("tertiary", null);
 
-  state.timerId = window.setInterval(tickTimer, 1000);
+  state.timerId = setInterval(tickTimer, 1000);
 }
 
 function tickTimer() {
-  state.timeRemaining -= 1;
+  state.timeRemaining--;
   updateTimerDisplay();
-
   if (state.timeRemaining <= 0) {
-    submitRound("timeout");
+    stopTimer();
+    if (!state.playerHex) {
+      state.playerHex = state.givenHex; // no pick → auto-fail
+    }
+    doSubmit();
   }
 }
 
 function updateTimerDisplay() {
-  const minutes = String(Math.floor(state.timeRemaining / 60)).padStart(2, "0");
-  const seconds = String(state.timeRemaining % 60).padStart(2, "0");
-  elements.timer.textContent = `${minutes}:${seconds}`;
-  elements.timer.classList.toggle("timer-urgent", state.timeRemaining <= 10);
+  const m = String(Math.floor(state.timeRemaining / 60)).padStart(2, '0');
+  const s = String(state.timeRemaining % 60).padStart(2, '0');
+  el.timer.textContent = `${m}:${s}`;
+  el.timer.classList.toggle('timer--urgent', state.timeRemaining <= 10);
 }
 
 function stopTimer() {
-  if (state.timerId) {
-    window.clearInterval(state.timerId);
-    state.timerId = null;
-  }
+  clearInterval(state.timerId);
+  state.timerId = null;
 }
 
-function renderPrimary() {
-  elements.primaryShape.style.background = state.primaryHex;
-  elements.primaryHex.textContent = state.primaryHex.toUpperCase();
-}
+// ── Scoring ───────────────────────────────────────────────
 
-function applyPlayerColor(slot, value) {
-  const normalized = value.toUpperCase();
-  if (slot === "secondary") {
-    state.secondaryHex = normalized;
-  } else {
-    state.tertiaryHex = normalized;
-  }
-
-  renderPlayerShape(slot, normalized);
-}
-
-function renderPlayerShape(slot, value) {
-  const shape = slot === "secondary" ? elements.secondaryShape : elements.tertiaryShape;
-  const label = slot === "secondary" ? elements.secondaryHex : elements.tertiaryHex;
-
-  if (!value) {
-    shape.classList.add("shape--placeholder");
-    if (slot === "secondary") {
-      shape.style.background = "#3a4154";
-    } else {
-      shape.style.borderBottomColor = "#3a4154";
-    }
-    label.textContent = "Pick a color";
-    return;
-  }
-
-  shape.classList.remove("shape--placeholder");
-  if (slot === "secondary") {
-    shape.style.background = value;
-  } else {
-    shape.style.borderBottomColor = value;
-  }
-  label.textContent = value;
-}
-
-function submitRound(reason) {
-  if (state.roundSubmitted) {
-    return;
-  }
-
+function doSubmit() {
+  if (state.submitted) return;
   stopTimer();
-  state.roundSubmitted = true;
+  state.submitted = true;
 
-  const result = scoreRound();
-  state.latestResult = result;
-  state.cumulativeScore += result.total;
+  el.hintBtn.disabled     = true;
+  el.submitBtn.disabled   = true;
+  el.pickTrigger.disabled = true;
 
-  elements.cumulativeScore.textContent = String(state.cumulativeScore);
-  elements.roundScore.textContent = `${result.total}/100`;
-  elements.roundScore.classList.add(result.total >= 70 ? "score-positive" : "score-neutral");
-  elements.roundScoreCaption.textContent = reason === "timeout"
-    ? "Time expired, so the round was submitted automatically."
-    : "Round complete. Open feedback to see what your palette was doing.";
-  elements.feedbackText.textContent = buildFeedback(result);
-  elements.toggleFeedback.disabled = false;
-  elements.nextRound.disabled = false;
-  elements.submitRound.disabled = true;
-  elements.skipRound.disabled = true;
-  elements.secondaryTrigger.disabled = true;
-  elements.tertiaryTrigger.disabled = true;
-  elements.roundStatus.textContent = "Round locked. Review your result, then move into the next principle.";
+  const playerHsl  = hexToHsl(state.playerHex);
+  const correctHsl = hexToHsl(state.correctHex);
+  const diff       = hueDiff(playerHsl.h, correctHsl.h);
+
+  let tier, base;
+  if      (diff <= 5)  { tier = 'Excellent'; base = 100; }
+  else if (diff <= 15) { tier = 'Good';      base = 70;  }
+  else if (diff <= 30) { tier = 'Close';     base = 40;  }
+  else                 { tier = 'Miss';      base = 10;  }
+
+  // Streak
+  if (tier === 'Miss') {
+    state.streak = 0;
+  } else {
+    state.streak++;
+  }
+
+  // Bonus applied using the streak *after* this round
+  let roundScore;
+  if (tier === 'Miss') {
+    roundScore = base;
+  } else if (state.streak >= 3) {
+    roundScore = Math.round(base * 1.20);
+  } else if (state.streak >= 2) {
+    roundScore = Math.round(base * 1.10);
+  } else {
+    roundScore = base;
+  }
+
+  if (state.hintUsed) roundScore = Math.max(0, roundScore - 5);
+
+  if (state.streak > state.maxStreak) state.maxStreak = state.streak;
+  if (roundScore > state.bestRound)   state.bestRound  = roundScore;
+  state.roundScores.push(roundScore);
+  state.score += roundScore;
+
+  // Accuracy %: map diff 0–180 → 100–0
+  const accuracyPct = Math.max(0, Math.round((1 - diff / 180) * 100));
+
+  // Reveal correct color on right side
+  drawCircle(state.givenHex, state.correctHex);
+  el.rightHex.textContent = state.correctHex;
+
+  // Accuracy bar
+  el.accuracyFill.style.width = '0';
+  el.accuracyWrap.hidden = false;
+  const tierColors = { Excellent: '#3DDC84', Good: '#6FD89A', Close: '#F5A623', Miss: '#FF6B6B' };
+  el.accuracyFill.style.background = tierColors[tier];
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    el.accuracyFill.style.width = `${accuracyPct}%`;
+  }));
+  el.accuracyLabel.textContent = `${accuracyPct}% accuracy — ${diff}° off`;
+
+  // Feedback
+  el.tierLabel.textContent  = tier;
+  el.tierLabel.className    = `tier-label tier-label--${tier.toLowerCase()}`;
+  el.pointsEarned.textContent = `+${roundScore} pts`;
+  el.correctReveal.textContent = `Correct: ${state.correctHex}`;
+
+  if (state.streak >= 2) {
+    const bonus = state.streak >= 3 ? '+20%' : '+10%';
+    el.streakBadge.textContent = `${state.streak}x streak — ${bonus} bonus applied`;
+    el.streakBadge.hidden = false;
+  }
+
+  el.submitInfo.hidden      = false;
+  el.feedbackSection.hidden = false;
+
+  // Bottom bar
+  el.scoreDisplay.textContent  = String(state.score);
+  el.streakDisplay.textContent = String(state.streak);
+  el.bestDisplay.textContent   = state.bestRound > 0 ? String(state.bestRound) : '—';
+
+  if (state.round >= TOTAL_ROUNDS) {
+    el.nextBtn.textContent = 'See Results';
+  }
+  el.nextBtn.disabled = false;
 }
 
-function skipRound() {
-  stopTimer();
-  startRound();
+// ── Results screen ────────────────────────────────────────
+
+function showResults() {
+  const pct = Math.round((state.score / MAX_POSSIBLE) * 100);
+  let grade;
+  if      (pct >= 90) grade = 'S';
+  else if (pct >= 75) grade = 'A';
+  else if (pct >= 60) grade = 'B';
+  else if (pct >= 45) grade = 'C';
+  else                grade = 'D';
+
+  el.resultsGrade.textContent    = grade;
+  el.resultsScore.textContent    = String(state.score);
+  el.resultsAccuracy.textContent = `${pct}%`;
+  el.resultsBest.textContent     = String(state.bestRound);
+  el.resultsStreak.textContent   = String(state.maxStreak);
+  el.resultsOverlay.hidden = false;
 }
 
 function resetGame() {
-  state.cumulativeScore = 0;
-  elements.cumulativeScore.textContent = "0";
+  state.round        = 1;
+  state.score        = 0;
+  state.streak       = 0;
+  state.maxStreak    = 0;
+  state.bestRound    = 0;
+  state.roundScores  = [];
+
+  el.scoreDisplay.textContent  = '0';
+  el.streakDisplay.textContent = '0';
+  el.bestDisplay.textContent   = '—';
+  el.resultsOverlay.hidden = true;
+
   startRound();
 }
 
-function scoreRound() {
-  const primaryHue = hexToHsl(state.primaryHex).h;
-  const secondaryResult = scoreColorChoice(primaryHue, state.secondaryHex);
-  const tertiaryResult = scoreColorChoice(primaryHue, state.tertiaryHex);
+// ── Color picker ──────────────────────────────────────────
 
-  return {
-    total: secondaryResult.points + tertiaryResult.points,
-    secondary: secondaryResult,
-    tertiary: tertiaryResult,
-  };
+function openPicker() {
+  const initial = state.playerHex || '#FFFFFF';
+  state.pickerTempHex      = initial;
+  el.colorPicker.value     = initial;
+  el.hexInput.value        = initial;
+  el.pickerPreview.style.background = initial;
+  el.pickerOverlay.hidden  = false;
 }
 
-function scoreColorChoice(primaryHue, selectedHex) {
-  if (!selectedHex) {
-    return {
-      points: 0,
-      relationship: "unfilled",
-      hueDistance: null,
-      improvement: "Pick a color before submitting to score this slot.",
-    };
+function updatePickerPreview(hex) {
+  state.pickerTempHex = hex;
+  el.pickerPreview.style.background = hex;
+  if (!state.submitted) {
+    drawCircle(state.givenHex, hex);
   }
-
-  const selectedHue = hexToHsl(selectedHex).h;
-  const hueDistance = directedHueDistance(primaryHue, selectedHue);
-  let bestMatch = null;
-
-  for (const relationship of RELATIONSHIPS) {
-    for (const target of relationship.targets) {
-      const delta = Math.abs(hueDistance - target);
-      if (delta <= 2) {
-        const tapered = Math.round(relationship.maxPoints - ((relationship.maxPoints - MIN_FILLED_SCORE) * (delta / 2)));
-        const candidate = {
-          points: tapered,
-          relationship: relationship.name,
-          hueDistance,
-          delta,
-          target,
-        };
-
-        if (!bestMatch || candidate.points > bestMatch.points) {
-          bestMatch = candidate;
-        }
-      }
-    }
-  }
-
-  if (bestMatch) {
-    return {
-      ...bestMatch,
-      improvement: bestMatch.delta === 0
-        ? `You hit the ${bestMatch.relationship} target exactly.`
-        : `A slight hue shift toward ${bestMatch.target} degrees of separation would raise the score.`,
-    };
-  }
-
-  return {
-    points: MIN_FILLED_SCORE,
-    relationship: "no match",
-    hueDistance,
-    improvement: "Aim closer to analogous, triadic, or complementary spacing on the color wheel.",
-  };
 }
 
-function buildFeedback(result) {
-  const secondarySummary = describeSlot("secondary", result.secondary);
-  const tertiarySummary = describeSlot("tertiary", result.tertiary);
-  const supportLine = result.total >= 70
-    ? "Together, those picks support the Color principle with a clear sense of intentional relationship."
-    : "Together, the palette feels less intentional, so the Color principle reads more weakly this round.";
-  const suggestion = result.secondary.points < result.tertiary.points
-    ? result.secondary.improvement
-    : result.tertiary.improvement;
-
-  return `${secondarySummary} ${tertiarySummary} ${supportLine} Suggestion: ${suggestion}`;
-}
-
-function describeSlot(slotName, slotResult) {
-  const label = slotName === "secondary" ? "Your secondary color" : "Your tertiary color";
-
-  if (slotResult.relationship === "unfilled") {
-    return `${label} was left empty, so it scored 0 points.`;
-  }
-
-  if (slotResult.relationship === "no match") {
-    return `${label} landed ${slotResult.hueDistance} degrees away from the primary, which did not align with the target relationships and scored ${slotResult.points} points.`;
-  }
-
-  return `${label} most closely matched a ${slotResult.relationship} relationship at ${slotResult.hueDistance} degrees and scored ${slotResult.points} points.`;
-}
-
-function randomHexColor() {
-  const hue = Math.floor(Math.random() * 360);
-  const saturation = 65 + Math.floor(Math.random() * 21);
-  const lightness = 45 + Math.floor(Math.random() * 11);
-  return hslToHex(hue, saturation, lightness);
-}
-
-function directedHueDistance(primaryHue, selectedHue) {
-  return (selectedHue - primaryHue + 360) % 360;
-}
-
-function hexToHsl(hex) {
-  const normalized = hex.replace("#", "");
-  const r = parseInt(normalized.slice(0, 2), 16) / 255;
-  const g = parseInt(normalized.slice(2, 4), 16) / 255;
-  const b = parseInt(normalized.slice(4, 6), 16) / 255;
-
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const lightness = (max + min) / 2;
-  let hue = 0;
-  let saturation = 0;
-
-  if (max !== min) {
-    const delta = max - min;
-    saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
-
-    switch (max) {
-      case r:
-        hue = ((g - b) / delta + (g < b ? 6 : 0)) * 60;
-        break;
-      case g:
-        hue = ((b - r) / delta + 2) * 60;
-        break;
-      default:
-        hue = ((r - g) / delta + 4) * 60;
-        break;
-    }
-  }
-
-  return {
-    h: Math.round(hue),
-    s: Math.round(saturation * 100),
-    l: Math.round(lightness * 100),
-  };
-}
-
-function hslToHex(h, s, l) {
-  const saturation = s / 100;
-  const lightness = l / 100;
-  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
-  const huePrime = h / 60;
-  const x = chroma * (1 - Math.abs((huePrime % 2) - 1));
-  let r1 = 0;
-  let g1 = 0;
-  let b1 = 0;
-
-  if (huePrime >= 0 && huePrime < 1) {
-    r1 = chroma;
-    g1 = x;
-  } else if (huePrime < 2) {
-    r1 = x;
-    g1 = chroma;
-  } else if (huePrime < 3) {
-    g1 = chroma;
-    b1 = x;
-  } else if (huePrime < 4) {
-    g1 = x;
-    b1 = chroma;
-  } else if (huePrime < 5) {
-    r1 = x;
-    b1 = chroma;
+function closePicker(commit) {
+  el.pickerOverlay.hidden = true;
+  if (commit && state.pickerTempHex) {
+    state.playerHex = state.pickerTempHex.toUpperCase();
+    el.rightHex.textContent = state.playerHex;
+    drawCircle(state.givenHex, state.playerHex);
   } else {
-    r1 = chroma;
-    b1 = x;
+    // Revert canvas preview to committed color (or no-pick)
+    drawCircle(state.givenHex, state.playerHex || null);
   }
-
-  const match = lightness - chroma / 2;
-  const toHex = (value) => Math.round((value + match) * 255).toString(16).padStart(2, "0");
-
-  return `#${toHex(r1)}${toHex(g1)}${toHex(b1)}`.toUpperCase();
 }
 
-init();
+// ── Event wiring ──────────────────────────────────────────
+
+function wireEvents() {
+  // Open picker by clicking right half of circle
+  el.pickTrigger.addEventListener('click', () => {
+    if (!state.submitted) openPicker();
+  });
+
+  // Native color input sync
+  el.colorPicker.addEventListener('input', e => {
+    const hex = e.target.value.toUpperCase();
+    el.hexInput.value = hex;
+    updatePickerPreview(hex);
+  });
+
+  // Hex text input sync
+  el.hexInput.addEventListener('input', e => {
+    const val = e.target.value.trim();
+    if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+      const upper = val.toUpperCase();
+      el.colorPicker.value = upper;
+      updatePickerPreview(upper);
+    }
+  });
+
+  el.pickerCancel.addEventListener('click', () => closePicker(false));
+  el.pickerUse.addEventListener('click', () => closePicker(true));
+
+  // Click outside picker card closes without committing
+  el.pickerOverlay.addEventListener('click', e => {
+    if (e.target === el.pickerOverlay) closePicker(false);
+  });
+
+  // Hint button
+  el.hintBtn.addEventListener('click', () => {
+    if (state.hintUsed || state.submitted) return;
+    state.hintUsed = true;
+    el.hintBtn.disabled = true;
+    const cHsl = hexToHsl(state.correctHex);
+    el.hintText.textContent = `Hint: approximate complement hue ~ ${cHsl.h}°  (−5 pts)`;
+    el.hintInfo.hidden = false;
+    el.feedbackSection.hidden = false;
+  });
+
+  // Submit button
+  el.submitBtn.addEventListener('click', () => {
+    if (state.submitted) return;
+    if (!state.playerHex) state.playerHex = state.givenHex;
+    doSubmit();
+  });
+
+  // Next round / see results
+  el.nextBtn.addEventListener('click', () => {
+    if (state.round >= TOTAL_ROUNDS) {
+      showResults();
+    } else {
+      state.round++;
+      startRound();
+    }
+  });
+
+  // Play again
+  el.playAgain.addEventListener('click', resetGame);
+}
+
+// ── Boot ──────────────────────────────────────────────────
+
+wireEvents();
+startRound();

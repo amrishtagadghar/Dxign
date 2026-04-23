@@ -3,103 +3,144 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dxign | Color Principle</title>
+  <title>Game of Colors — Complementary</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="page-shell">
+
     <header class="top-bar">
-      <div class="top-bar__group">
-        <span class="eyebrow">Principle</span>
-        <strong id="principle-name">Color</strong>
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <span class="breadcrumb__seg">Color</span>
+        <span class="breadcrumb__sep">/</span>
+        <span class="breadcrumb__seg breadcrumb__seg--active">Complementary</span>
+      </nav>
+
+      <div class="timer-wrap">
+        <span id="timer" class="timer" aria-live="polite" aria-label="Time remaining">01:00</span>
       </div>
 
-      <div class="top-bar__group top-bar__group--center">
-        <span class="eyebrow">Timer</span>
-        <strong id="timer" aria-live="polite">01:00</strong>
-      </div>
-
-      <button id="skip-round" class="text-button" type="button">Next random principle</button>
+      <a href="#" class="home-link">Home</a>
     </header>
 
     <main class="game-layout">
-      <section class="hero-panel">
-        <div class="hero-panel__copy">
-          <p class="section-kicker">Design Drill</p>
-          <h1>Build a stronger palette under pressure.</h1>
-          <p id="round-status" class="hero-panel__status">
-            Match the primary color with two supporting choices before the timer runs out.
-          </p>
+
+      <section class="circle-section">
+        <div class="circle-row">
+          <div class="hex-block hex-block--left">
+            <span id="left-hex" class="hex-label">#------</span>
+            <span class="hex-caption">Target</span>
+          </div>
+
+          <div class="circle-wrap">
+            <canvas id="split-circle" width="220" height="220" role="img" aria-label="Color comparison circle"></canvas>
+            <button id="pick-trigger" class="pick-trigger" type="button" aria-label="Open color picker to choose your answer"></button>
+          </div>
+
+          <div class="hex-block hex-block--right">
+            <span id="right-hex" class="hex-label">?</span>
+            <span class="hex-caption">Your Pick</span>
+          </div>
         </div>
 
-        <div class="score-card" aria-live="polite">
-          <span class="eyebrow">Round Score</span>
-          <strong id="round-score">--</strong>
-          <p id="round-score-caption">Submit your colors to reveal the result.</p>
+        <div id="accuracy-wrap" class="accuracy-wrap" hidden>
+          <div class="accuracy-track">
+            <div id="accuracy-fill" class="accuracy-fill"></div>
+          </div>
+          <span id="accuracy-label" class="accuracy-label"></span>
         </div>
       </section>
 
-      <section class="play-area" aria-label="Color challenge">
-        <article class="shape-card">
-          <span class="shape-card__label">Primary</span>
-          <div id="primary-shape" class="shape shape--circle" aria-label="Primary color"></div>
-          <p id="primary-hex" class="shape-card__value">#000000</p>
-        </article>
-
-        <article class="shape-card">
-          <span class="shape-card__label">Secondary</span>
-          <button id="secondary-trigger" class="shape-button" type="button" aria-label="Choose secondary color">
-            <span id="secondary-shape" class="shape shape--square shape--placeholder"></span>
-          </button>
-          <p id="secondary-hex" class="shape-card__value">Pick a color</p>
-          <input id="secondary-input" class="color-input" type="color" value="#7a8cff" aria-label="Secondary color picker">
-        </article>
-
-        <article class="shape-card">
-          <span class="shape-card__label">Tertiary</span>
-          <button id="tertiary-trigger" class="shape-button" type="button" aria-label="Choose tertiary color">
-            <span id="tertiary-shape" class="shape shape--triangle shape--placeholder"></span>
-          </button>
-          <p id="tertiary-hex" class="shape-card__value">Pick a color</p>
-          <input id="tertiary-input" class="color-input" type="color" value="#ff8f7a" aria-label="Tertiary color picker">
-        </article>
+      <section id="feedback-section" class="feedback-section" hidden>
+        <div id="hint-info" class="hint-info" hidden>
+          <p id="hint-text" class="hint-text"></p>
+        </div>
+        <div id="submit-info" class="submit-info" hidden>
+          <div class="feedback-row">
+            <span id="tier-label" class="tier-label"></span>
+            <span id="points-earned" class="points-earned"></span>
+          </div>
+          <p id="correct-reveal" class="correct-reveal"></p>
+          <p id="streak-badge" class="streak-badge" hidden></p>
+        </div>
       </section>
 
       <section class="action-row">
-        <button id="submit-round" class="action-button" type="button">Submit</button>
-        <button id="toggle-feedback" class="action-button action-button--ghost" type="button" disabled>View Feedback</button>
-        <button id="next-round" class="action-button action-button--ghost" type="button" disabled>Next Principle</button>
+        <button id="hint-btn" class="action-button action-button--ghost" type="button">Hint</button>
+        <button id="submit-btn" class="action-button" type="button">Submit</button>
+        <button id="next-btn" class="action-button action-button--ghost" type="button" disabled>Next Round</button>
       </section>
 
-      <section id="feedback-panel" class="feedback-panel" hidden>
-        <span class="eyebrow">Feedback</span>
-        <p id="feedback-text"></p>
-      </section>
     </main>
 
     <footer class="bottom-bar">
-      <button id="about-button" class="text-button" type="button">About</button>
-
-      <div class="bottom-bar__score">
-        <span class="eyebrow">Your Score</span>
-        <strong id="cumulative-score">0</strong>
+      <div class="stat-group">
+        <span class="stat-label">Score</span>
+        <strong id="score-display" class="stat-value">0</strong>
       </div>
-
-      <button id="reset-game" class="text-button" type="button">Reset</button>
+      <div class="stat-group">
+        <span class="stat-label">Round</span>
+        <strong id="round-display" class="stat-value">1 / 5</strong>
+      </div>
+      <div class="stat-group">
+        <span class="stat-label">Streak</span>
+        <strong id="streak-display" class="stat-value">0</strong>
+      </div>
+      <div class="stat-group">
+        <span class="stat-label">Best Round</span>
+        <strong id="best-display" class="stat-value">—</strong>
+      </div>
     </footer>
   </div>
 
-  <dialog id="about-dialog" class="about-dialog">
-    <form method="dialog" class="about-dialog__content">
-      <p class="section-kicker">About Dxign</p>
-      <h2>Learn color relationships by playing fast, focused rounds.</h2>
-      <p>
-        In this Phase 1 prototype, Dxign gives you a random primary color and scores your supporting picks
-        using hue distance in HSL space. Try aiming for complementary, triadic, or analogous relationships.
-      </p>
-      <button class="action-button" type="submit">Close</button>
-    </form>
-  </dialog>
+  <!-- Color picker popup -->
+  <div id="picker-popup" class="picker-overlay" hidden>
+    <div class="picker-card" role="dialog" aria-modal="true" aria-label="Color picker">
+      <p class="picker-title">Pick your complement</p>
+      <div class="picker-controls">
+        <input type="color" id="color-picker" class="picker-native" value="#ffffff" aria-label="Color swatch picker">
+        <div class="picker-hex-wrap">
+          <label for="hex-input" class="picker-hex-label">Hex</label>
+          <input type="text" id="hex-input" class="picker-hex-input" placeholder="#RRGGBB" maxlength="7" spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+      <div id="picker-preview" class="picker-preview" aria-hidden="true"></div>
+      <div class="picker-actions">
+        <button id="picker-cancel" class="action-button action-button--ghost" type="button">Cancel</button>
+        <button id="picker-use" class="action-button" type="button">Use</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results overlay -->
+  <div id="results-overlay" class="results-overlay" hidden>
+    <div class="results-card" role="dialog" aria-modal="true" aria-label="Game results">
+      <p class="section-kicker">Game Over</p>
+      <div id="results-grade" class="results-grade" aria-label="Grade"></div>
+      <div class="results-stats">
+        <div class="results-stat">
+          <span class="stat-label">Final Score</span>
+          <strong id="results-score" class="stat-value"></strong>
+        </div>
+        <div class="results-stat">
+          <span class="stat-label">Accuracy</span>
+          <strong id="results-accuracy" class="stat-value"></strong>
+        </div>
+        <div class="results-stat">
+          <span class="stat-label">Best Round</span>
+          <strong id="results-best" class="stat-value"></strong>
+        </div>
+        <div class="results-stat">
+          <span class="stat-label">Max Streak</span>
+          <strong id="results-streak" class="stat-value"></strong>
+        </div>
+      </div>
+      <button id="play-again" class="action-button" type="button">Play Again</button>
+    </div>
+  </div>
 
   <script src="game.js"></script>
 </body>
